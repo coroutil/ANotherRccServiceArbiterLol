@@ -8,7 +8,7 @@ namespace Arbiter.Controllers;
 public record ExecuteScript(
     string gameId,
     string scriptName,
-    object[] arguments,
+    string arguments,
     string script
 );
 
@@ -42,112 +42,20 @@ public class ExecuteScriptController : ControllerBase
         if (job == null)
             return Error.Create(404, "NotFound");
 
-        static string BuildArgument(object? arg)
-        {
-            return arg switch
-            {
-                string s => $@"
-<rob:LuaValue>
-  <rob:type>LUA_TSTRING</rob:type>
-  <rob:value>{System.Security.SecurityElement.Escape(s)}</rob:value>
-</rob:LuaValue>",
-
-                int i => $@"
-<rob:LuaValue>
-  <rob:type>LUA_TNUMBER</rob:type>
-  <rob:value>{i}</rob:value>
-</rob:LuaValue>",
-
-                long l => $@"
-<rob:LuaValue>
-  <rob:type>LUA_TNUMBER</rob:type>
-  <rob:value>{l}</rob:value>
-</rob:LuaValue>",
-
-                float f => $@"
-<rob:LuaValue>
-  <rob:type>LUA_TNUMBER</rob:type>
-  <rob:value>{f}</rob:value>
-</rob:LuaValue>",
-
-                double d => $@"
-<rob:LuaValue>
-  <rob:type>LUA_TNUMBER</rob:type>
-  <rob:value>{d}</rob:value>
-</rob:LuaValue>",
-
-                bool b => $@"
-<rob:LuaValue>
-  <rob:type>LUA_TBOOLEAN</rob:type>
-  <rob:value>{b.ToString().ToLowerInvariant()}</rob:value>
-</rob:LuaValue>",
-
-                null => @"
-<rob:LuaValue>
-  <rob:type>LUA_TNIL</rob:type>
-  <rob:value></rob:value>
-</rob:LuaValue>",
-
-                _ => throw new Exception($"Unsupported argument type: {arg.GetType()}")
-            };
-        }
-
-        string arguments = string.Empty;
-
-        if (body.arguments?.Length > 0)
-        {
-            var sb = new StringBuilder();
-            sb.Append("<rob:arguments>");
-
-            foreach (var arg in body.arguments)
-                sb.Append(BuildArgument(arg));
-
-            sb.Append("</rob:arguments>");
-            arguments = sb.ToString();
-        }
-
         try
         {
-            ServicePointManager.Expect100Continue = false;
-            ServicePointManager.UseNagleAlgorithm = false;
+            var args = Helper.ParseArguments(body.arguments);
 
-            var baseUrl = Configuration.GetStringFlag("FStringBaseURL");
-
-            var soap = $@"
-<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:rob=""http://{baseUrl}/"">
-  <soapenv:Body>
-    <rob:ExecuteEx>
-      <rob:jobID>{body.gameId}</rob:jobID>
-      <rob:script>
-        <rob:name>{body.scriptName}</rob:name>
-        <rob:script><![CDATA[
-{body.script}
-        ]]></rob:script>
-        {arguments}
-      </rob:script>
-    </rob:ExecuteEx>
-  </soapenv:Body>
-</soapenv:Envelope>";
-
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{job.SOAP}/");
-            req.Version = HttpVersion.Version11;
-            req.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-            req.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(soap));
-            req.Content.Headers.ContentType =
-                new MediaTypeHeaderValue("text/xml")
-                {
-                    CharSet = "utf-8"
-                };
-
-            req.Headers.Add("SOAPAction", "ExecuteScript");
-            req.Headers.ConnectionClose = true;
-
-            using var resp = await SOAP.client.SendAsync(req);
-
-            var responseBody = await resp.Content.ReadAsStringAsync();
-
-            if (!resp.IsSuccessStatusCode)
-                throw new Exception(responseBody);
+            var response = SOAP.Send(
+                job.SOAP,
+                "ExecuteScript",
+                string.Empty,
+                "BatchJobEx",
+                out var rccvalue,
+                body.gameId,
+                expirationInSeconds: 30,
+                arguments: args
+            );
 
             return Ok(new
             {

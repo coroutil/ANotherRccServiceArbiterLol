@@ -136,7 +136,7 @@ public static class Helper
         int i = 0;
         for (int pos = 0; pos < script.Length; pos++)
         {
-            if (pos < script.Length - 1 && script[pos] == '{' && script[pos + 1] == '}' && i < args.Count)
+            if (pos < script.Length - 1 && script[pos] == '(' && script[pos + 1] == ')' && i < args.Count)
             {
                 result.Append(args[i++]?.ToString() ?? "null");
                 pos++; // skip '}'

@@ -12,6 +12,7 @@
  */
 
 using Arbiter;
+using Arbiter.Middleware;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +26,8 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+Console.Title = "ANotherRccServiceArbiterLol";
+
 Configuration.Initialize(app.Configuration); // build fflags
 
 // now we start rccservice
@@ -36,31 +39,8 @@ app.Lifetime.ApplicationStopping.Register(() =>
     RCCServicePool.Shutdown();
 });
 
-app.Use(async (context, next) =>
-{
-    var sw = Stopwatch.StartNew();
-
-    context.Response.OnStarting(() =>
-    {
-        context.Response.Headers["X-Response-Time"] = $"{sw.ElapsedMilliseconds}ms";
-        context.Response.Headers["X-Request-Id"] = Guid.NewGuid().ToString("N");
-        context.Response.Headers["X-Server-Time"] = DateTime.UtcNow.ToString("O");
-        context.Response.Headers["X-Powered-By"] = "ANotherRccServiceArbiterLol";
-        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        context.Response.Headers["X-Frame-Options"] = "DENY";
-        context.Response.Headers["Referrer-Policy"] = "no-referrer";
-        context.Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
-        context.Response.Headers["Machine-Id"] = Helper.GetNodeId();
-        context.Response.Headers["Pragma"] = "no-cache";
-        context.Response.Headers["Expires"] = "0";
-        return Task.CompletedTask;
-    });
-
-    await next();
-
-    sw.Stop();
-});
-
+// custom headers (middleware)
+app.AddHeaders();
 // Configure the HTTP request pipeline.
 app.UseSwagger();
 app.UseSwaggerUI();

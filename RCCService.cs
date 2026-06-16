@@ -18,8 +18,9 @@ public sealed class RCCService
         {
             Process.Kill(true);
         }
-        catch
-        {
+        catch (Exception e) { 
+            // genuinely what the fuck happend
+            throw new Exception(e.Message);
         }
     }
 
@@ -41,9 +42,11 @@ public sealed class RCCService
         if (Configuration.GetFlag("FFlagRCCServiceOnlySpeaksJSON"))
         {
             arguments =
-                Configuration.GetFlag("FFlagVerbose")
-                ? $"-verbose -Console -port {port}"
-                : $"-Console -port {port}";
+                Configuration.GetFlag("FFlagDebug")
+                    ? $"-verbose -settingsfile \"DevSettingsFile.json\" -Console -port {port}"
+                    : Configuration.GetFlag("FFlagVerbose")
+                        ? $"-verbose -Console -port {port}"
+                        : $"-Console -port {port}";
         }
         else
         {

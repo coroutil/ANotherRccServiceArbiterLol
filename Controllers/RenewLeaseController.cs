@@ -41,31 +41,17 @@ public class RenewLeaseController : ControllerBase
             if (job == null)
                 throw new Exception($"{gameId} wasn't found in GMS");
 
-            var soap = $@"<?xml version=""1.0"" encoding=""utf-8""?>
-<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:rob=""http://{Configuration.GetStringFlag("FStringBaseURL")}/"">
-  <soapenv:Body>
-    <rob:RenewLease>
-      <rob:jobID>{gameId}</rob:jobID>
-      <rob:expirationInSeconds>{expirationInSeconds}</rob:expirationInSeconds>
-    </rob:RenewLease>
-  </soapenv:Body>
-</soapenv:Envelope>";
+            var response = SOAP.Send(
+                job.SOAP,
+                "RenewLease",
+                string.Empty,
+                "BatchJobEx",
+                out var rccvalue,
+                gameId,
+                expirationInSeconds: 30
+            );
 
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{job.SOAP}/");
-            req.Version = HttpVersion.Version11;
-            req.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-
-            req.Content = new ByteArrayContent(Encoding.UTF8.GetBytes(soap));
-            req.Content.Headers.ContentType = new MediaTypeHeaderValue("text/xml") { CharSet = "utf-8" };
-
-            req.Headers.Add("SOAPAction", "RenewLease");
-            req.Headers.Host = $"127.0.0.1:{job.SOAP}";
-            req.Headers.ConnectionClose = true;
-
-            client.DefaultRequestHeaders.ExpectContinue = false;
-
-            using var resp = client.Send(req);
-            return resp.IsSuccessStatusCode;
+            return true;
         }
         catch (Exception ex)
         {

@@ -1,7 +1,9 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace Arbiter;
@@ -9,47 +11,56 @@ namespace Arbiter;
 public static class SOAP
 {
     public static readonly HttpClient client = new();
+    private static readonly string Namespace = $"http://{Configuration.GetStringFlag("FStringBaseURL")}/";
 
+    // AHH!!! -Seymour
     private static string BuildArguments(List<LuaValue>? arguments)
     {
         if (arguments == null || arguments.Count == 0)
             return string.Empty;
 
-        var xml = new StringBuilder();
+        var settings = new XmlWriterSettings
+        {
+            OmitXmlDeclaration = true,
+            Indent = true
+        };
 
-        xml.AppendLine("<rob:arguments>");
+        using var sw = new StringWriter();
+        using var writer = XmlWriter.Create(sw, settings);
+
+        writer.WriteStartElement("rob", "arguments", Namespace);
 
         foreach (var a in arguments)
         {
-            xml.AppendLine("<rob:LuaValue>");
+            writer.WriteStartElement("rob", "LuaValue", Namespace);
 
             switch (a.Kind)
             {
                 case LuaValue.ValueKind.String:
-                    xml.AppendLine("<rob:type>LUA_TSTRING</rob:type>");
-                    xml.AppendLine(
-                        $"<rob:value>{SecurityElement.Escape(a.StringValue ?? "")}</rob:value>");
+                    writer.WriteElementString("rob", "type", Namespace, "LUA_TSTRING");
+                    writer.WriteElementString("rob", "value", Namespace, a.StringValue ?? "");
                     break;
 
                 case LuaValue.ValueKind.Number:
-                    xml.AppendLine("<rob:type>LUA_TNUMBER</rob:type>");
-                    xml.AppendLine(
-                        $"<rob:value>{a.NumberValue?.ToString(System.Globalization.CultureInfo.InvariantCulture)}</rob:value>");
+                    writer.WriteElementString("rob", "type", Namespace, "LUA_TNUMBER");
+                    writer.WriteElementString("rob", "value", Namespace,
+                        a.NumberValue?.ToString(CultureInfo.InvariantCulture) ?? "");
                     break;
 
                 case LuaValue.ValueKind.Boolean:
-                    xml.AppendLine("<rob:type>LUA_TBOOLEAN</rob:type>");
-                    xml.AppendLine(
-                        $"<rob:value>{(a.BooleanValue == true ? "true" : "false")}</rob:value>");
+                    writer.WriteElementString("rob", "type", Namespace, "LUA_TBOOLEAN");
+                    writer.WriteElementString("rob", "value", Namespace,
+                        a.BooleanValue == true ? "true" : "false");
                     break;
             }
 
-            xml.AppendLine("</rob:LuaValue>");
+            writer.WriteEndElement();
         }
 
-        xml.AppendLine("</rob:arguments>");
+        writer.WriteEndElement();
+        writer.Flush();
 
-        return xml.ToString();
+        return sw.ToString();
     }
 
     private static string BuildEnvelope(string jobType, string script, List<LuaValue>? arguments = null, string? jobId = null, int expirationInSeconds = 120, int cores = 1, bool rendermode = false)
@@ -102,7 +113,7 @@ public static class SOAP
         };
 
         return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
-<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:rob=""http://{baseUrl}/"">
+<soapenv:Envelope xmlns:soapenv=""http://schemas.xmlsoap.org/soap/envelope/"" xmlns:rob=""{Namespace}"">
   <soapenv:Header />
   <soapenv:Body>
     {body}
