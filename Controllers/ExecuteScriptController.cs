@@ -50,7 +50,7 @@ public class ExecuteScriptController : ControllerBase
                 job.SOAP,
                 "ExecuteScript",
                 string.Empty,
-                "BatchJobEx",
+                "ExecuteScript",
                 out var rccvalue,
                 body.gameId,
                 expirationInSeconds: 30,

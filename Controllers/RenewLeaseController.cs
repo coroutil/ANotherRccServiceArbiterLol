@@ -45,7 +45,7 @@ public class RenewLeaseController : ControllerBase
                 job.SOAP,
                 "RenewLease",
                 string.Empty,
-                "BatchJobEx",
+                "RenewLease",
                 out var rccvalue,
                 gameId,
                 expirationInSeconds: 30
