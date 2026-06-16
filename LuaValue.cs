@@ -22,14 +22,4 @@ public sealed class LuaValue
     public static LuaValue FromString(string value) => new(ValueKind.String, value, null, null);
     public static LuaValue FromNumber(double value) => new(ValueKind.Number, null, value, null);
     public static LuaValue FromBool(bool value) => new(ValueKind.Boolean, null, null, value);
-    public string XmlTypeName()
-    {
-        return Kind switch
-        {
-            ValueKind.String => "string",
-            ValueKind.Number => "number",
-            ValueKind.Boolean => "boolean",
-            _ => "unknown"
-        };
-    }
 }

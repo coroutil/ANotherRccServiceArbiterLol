@@ -131,24 +131,38 @@ public static class Helper
         if (string.IsNullOrEmpty(script) || args == null)
             return script;
 
-        var result = new StringBuilder(script.Length + args.Count * 8);
+        var result = new StringBuilder(script.Length);
 
-        int i = 0;
         for (int pos = 0; pos < script.Length; pos++)
         {
-            if (pos < script.Length - 1 && script[pos] == '(' && script[pos + 1] == ')' && i < args.Count)
+            if (script[pos] == '(')
             {
-                result.Append(args[i++]?.ToString() ?? "null");
-                pos++; // skip '}'
+                int end = script.IndexOf(')', pos);
+
+                if (end > pos + 1)
+                {
+                    string token = script.Substring(pos + 1, end - pos - 1);
+
+                    if (int.TryParse(token, out int index))
+                    {
+                        index--; // (1) => args[0]
+
+                        if (index >= 0 && index < args.Count)
+                        {
+                            result.Append(args[index]?.ToString() ?? "null");
+                            pos = end;
+                            continue;
+                        }
+                    }
+                }
             }
-            else
-            {
-                result.Append(script[pos]);
-            }
+
+            result.Append(script[pos]);
         }
 
         return result.ToString();
     }
+
     public static string GetNodeId()
     {
         var machineId = GetMachineId();
@@ -184,13 +198,5 @@ public static class Helper
         }
 
         return Environment.MachineName;
-    }
-
-    public sealed class ConditionalFrame
-    {
-        public bool ParentActive { get; init; }
-        public bool BranchMatched { get; set; }
-        public bool CurrentActive { get; set; }
-        public bool SeenElse { get; set; }
     }
 }

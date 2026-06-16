@@ -10,7 +10,7 @@ namespace Arbiter.Controllers;
 public class StartGameController : ControllerBase
 {
     [HttpPost]
-    public IActionResult Post([FromBody] RequestModel request)
+    public IActionResult Post([FromBody] StartGameRequest request)
     {
         /* validation check start */
         if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
@@ -150,4 +150,13 @@ public class StartGameController : ControllerBase
             return Error.Create(500, ex.Message);
         }
     }
+}
+
+public sealed class StartGameRequest
+{
+    public string Type { get; set; } = string.Empty;
+    public long Id { get; set; }
+
+    // 67,string,true
+    public string Arguments { get; set; } = string.Empty;
 }
