@@ -37,25 +37,11 @@ public class StartGameController : ControllerBase
         if (request.Id <= 0)
             return Error.Create(400, "BadRequest");
 
-        // if rccserviec only speaks json, then oh dear we need to tamper with the script
-        // to do this, we make our own programming language!
-        if (Configuration.GetFlag("FFlagRCCServiceOnlySpeaksJSON"))
-        {
-            // Here, we will use the arguments.
-            // so, for example, we get example arguments: "67,string,bool"
-            // {} means "take the next argument and insert it here". so we do that for all arguments, and then we have a nice json object to send to rccservice
-            // so a line can be like from this: "spawnPlayer({}, {}, true)"
-            // to this: "spawnPlayer(67, string, true)"
-
-            script = Helper.ProcessArguments(script, args);
-        }
-
         try
         {
 
             if (request.Type.Equals("gameserver", StringComparison.OrdinalIgnoreCase)) {
                 var rcc = RCCService.Start(Helper.GetAvailablePort(Configuration.GetIntFlag("DFIntRCCServiceMinPort"), Configuration.GetIntFlag("DFIntRCCServiceMaxPort"), "TCP")); // THIS IS BULLSHIT
-
                 if (rcc == null)
                     return Error.Create(503, "ServiceUnavailable");
 
@@ -71,10 +57,15 @@ public class StartGameController : ControllerBase
                     proxy.Start();
                 }
 
-                args.Insert(0, LuaValue.FromNumber(raknetPort));
+                if (Configuration.GetFlag("FFlagRCCServiceOnlySpeaksJSON")) {
+                    args.Insert(0, LuaValue.FromNumber(raknetPort)); // gameserver port
+                    args.Add(LuaValue.FromNumber(request.Id)); // placeid
+                    args.Add(LuaValue.FromString(jobId)); // jobId
+                    script = Helper.ProcessArguments(script, args);
+                }
 
-                _ = Task.Run(() =>
-                {
+                /*_ = Task.Run(() =>
+                {*/
                     SOAP.Send(
                         rcc.Port,
                         "OpenJobEx",
@@ -87,7 +78,7 @@ public class StartGameController : ControllerBase
                         cores: Math.Max(1, Health.GetPhysicalCoreCount() / Process.GetProcessesByName(Configuration.GetStringFlag("FStringRCCServiceName")).Length),
                         category: 1
                     );
-                });
+                //});
 
                 GameMonitorService.Insert(new GMSJob
                 {
@@ -111,6 +102,9 @@ public class StartGameController : ControllerBase
 
                 if (rcc == null)
                     return Error.Create(503, "ServiceUnavailable");
+
+                if (Configuration.GetFlag("FFlagRCCServiceOnlySpeaksJSON"))
+                    script = Helper.ProcessArguments(script, args);
 
                 var response = SOAP.Send(
                     rcc.Port,

@@ -34,52 +34,40 @@ public static class Helper
         throw new ArgumentException("Protocol must be TCP or UDP.");
     }
 
+
     public static int GetAvailablePort(int minimumPort, int maximumPort, string protocol)
     {
+        if (minimumPort > maximumPort)
+            throw new ArgumentException("Invalid port range.");
+
         protocol = protocol.ToUpperInvariant();
 
-        for (var i = 0; i < 1000; i++)
-        {
-            int port;
+        int count = maximumPort - minimumPort + 1;
+        int start = Random.Shared.Next(count);
 
-            if (protocol == "TCP")
+        for (int i = 0; i < count; i++)
+        {
+            int port = minimumPort + ((start + i) % count);
+
+            try
             {
-                while (true)
+                if (protocol == "TCP")
                 {
-                    var listener = new TcpListener(IPAddress.Loopback, 0);
-                    try
-                    {
-                        listener.Start();
-                    }
-                    catch (SocketException)
-                    {
-                        Console.WriteLine("SocketException TCP");
-                    }
-                    port = ((IPEndPoint)listener.LocalEndpoint).Port;
-                    if (port >= minimumPort && port <= maximumPort)
-                    {
-                        listener.Stop();
-                        return port;
-                    }
+                    using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                    socket.Bind(new IPEndPoint(IPAddress.Loopback, port));
+                    return port;
                 }
-            }
-            else if (protocol == "UDP")
-            {
-                while (true)
+
+                if (protocol == "UDP")
                 {
-                    using var udp = new UdpClient(0);
-                    port = ((IPEndPoint)udp.Client.LocalEndPoint).Port;
-                    if (port >= minimumPort && port <= maximumPort)
-                    {
-                        udp.Dispose();
-                        return port;
-                    }
+                    using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    socket.Bind(new IPEndPoint(IPAddress.Loopback, port));
+                    return port;
                 }
-            }
-            else
-            {
+
                 throw new ArgumentException("Protocol must be TCP or UDP.");
             }
+            catch (SocketException) {}
         }
 
         throw new Exception($"Unable to obtain a {protocol} port in range {minimumPort}-{maximumPort}.");

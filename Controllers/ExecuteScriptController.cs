@@ -49,7 +49,7 @@ public class ExecuteScriptController : ControllerBase
             var response = SOAP.Send(
                 job.SOAP,
                 "ExecuteScript",
-                string.Empty,
+                body.script,
                 "ExecuteScript",
                 out var rccvalue,
                 body.gameId,

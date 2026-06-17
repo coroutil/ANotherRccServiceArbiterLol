@@ -4,22 +4,21 @@ namespace Arbiter;
 
 public static class Error
 {
-    public static ObjectResult Create(int fakeahcode, string message)
+    public static ObjectResult Create(int code, string message)
     {
-		int code = 0; //thanks c#
         return new ObjectResult(new
         {
             errors = new[]
             {
                 new
                 {
-                    code,
+                    code = 0,
                     message
                 }
             }
         })
         {
-            StatusCode = fakeahcode
+            StatusCode = code
         };
     }
 }

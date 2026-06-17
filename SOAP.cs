@@ -88,7 +88,7 @@ public static class SOAP
   </rob:script>
 </rob:{jobType}>",
 
-            "Execute" => $@"
+            "ExecuteScript" => $@"
 <rob:Execute>
   <rob:jobID>{jobId}</rob:jobID>
 
