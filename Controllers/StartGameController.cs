@@ -74,7 +74,7 @@ public class StartGameController : ControllerBase
                         out var rccvalue,
                         jobId,
                         arguments: args,
-                        expirationInSeconds: 30,
+                        expirationInSeconds: Configuration.GetIntFlag("FIntGameServerExpirationInSeconds"),
                         cores: Math.Max(1, Health.GetPhysicalCoreCount() / Process.GetProcessesByName(Configuration.GetStringFlag("FStringRCCServiceName")).Length),
                         category: 1
                     );
