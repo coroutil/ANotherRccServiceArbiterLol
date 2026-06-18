@@ -48,7 +48,7 @@ public class RenewLeaseController : ControllerBase
                 "RenewLease",
                 out var rccvalue,
                 gameId,
-                expirationInSeconds: 30
+                expirationInSeconds: expirationInSeconds
             );
 
             return true;

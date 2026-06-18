@@ -53,7 +53,6 @@ public class ExecuteScriptController : ControllerBase
                 "ExecuteScript",
                 out var rccvalue,
                 body.gameId,
-                expirationInSeconds: 30,
                 arguments: args
             );
 
