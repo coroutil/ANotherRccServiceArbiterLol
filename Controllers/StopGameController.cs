@@ -41,7 +41,7 @@ public class StopGameController : ControllerBase
             var process = Process.GetProcessById((int)request.pid);
 
             process.Kill(true);
-            process.WaitForExit();
+            //process.WaitForExit(); // We Dont Fucking Care
 
             return Ok(new
             {

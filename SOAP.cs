@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
@@ -121,7 +122,7 @@ public static class SOAP
 </soapenv:Envelope>";
     }
 
-    public static string Send(int port, string jobType, string script, string action, out string? rccvalue, string? jobId = null, List<LuaValue>? arguments = null, int expirationInSeconds = 120, int cores = 1, int category = 1)
+    /*public static string Send(int port, string jobType, string script, string action, out string? rccvalue, string? jobId = null, List<LuaValue>? arguments = null, int expirationInSeconds = 120, int cores = 1, int category = 1)
     {
         rccvalue = null;
 
@@ -161,5 +162,81 @@ public static class SOAP
         }
 
         return body;
+    }*/
+
+    public static async Task<SOAPResult> Send(int port, string jobType, string script, string action, int expirationInSeconds = 120, int cores = 1, int category = 1, string? jobId = null, List<LuaValue>? arguments = null, CancellationToken cancellationToken = default)
+    {
+        var result = new SOAPResult();
+
+        var xml = BuildEnvelope(jobType, script, arguments, jobId, expirationInSeconds, cores);
+        Console.WriteLine(xml);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/");
+
+        req.Version = HttpVersion.Version11;
+        req.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
+        req.Content = new StringContent(xml, Encoding.UTF8, "text/xml");
+        req.Headers.Add("SOAPAction", action);
+        req.Headers.ConnectionClose = true;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(expirationInSeconds));
+
+        try
+        {
+            using var resp = await client.SendAsync(req, timeoutCts.Token);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            result.Body = body;
+
+            if (!resp.IsSuccessStatusCode)
+                throw new Exception(body);
+
+            if (category == 2)
+            {
+                var doc = XDocument.Parse(body);
+
+                var faultstring = doc.Descendants()
+                    .FirstOrDefault(e => e.Name.LocalName == "faultstring");
+
+                if (faultstring != null)
+                    throw new Exception((string?)faultstring);
+
+                var value = doc.Descendants()
+                    .FirstOrDefault(e => e.Name.LocalName == "value");
+
+                if (value == null)
+                    throw new Exception($"No value was found. RCCService version mismatch? {body}");
+
+                result.Value = Helper.fixitup(value.Value.Trim());
+            }
+
+            return result;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            var job = GameMonitorService.GetByPort(port);
+
+            if (job != null)
+            {
+                GameMonitorService.Remove(job.JobId);
+                ReverseProxy.Stop(job.Port);
+
+                try
+                {
+                    var process = Process.GetProcessById((int)job.Pid);
+                    process.Kill(true);
+                }
+                catch { }
+            }
+
+            throw new TimeoutException("Yo maybe rcc is not good, shut it down");
+        }
     }
+}
+
+public class SOAPResult
+{
+    public string Body { get; set; } = "";
+    public string? Value { get; set; }
 }

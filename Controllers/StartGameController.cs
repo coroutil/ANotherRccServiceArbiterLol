@@ -10,7 +10,7 @@ namespace Arbiter.Controllers;
 public class StartGameController : ControllerBase
 {
     [HttpPost]
-    public IActionResult Post([FromBody] StartGameRequest request)
+    public async Task<IActionResult> PostAsync([FromBody] StartGameRequest request)
     {
         /* validation check start */
         if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
@@ -64,15 +64,16 @@ public class StartGameController : ControllerBase
                     script = Helper.ProcessArguments(script, args);
                 }
 
+                RCCServicePool.RegisterProcess(rcc);
+
                 /*_ = Task.Run(() =>
                 {*/
-                    SOAP.Send(
-                        rcc.Port,
-                        "OpenJobEx",
-                        script,
-                        "OpenJobEx",
-                        out var rccvalue,
-                        jobId,
+                await SOAP.Send(
+                        port: rcc.Port,
+                        jobType: "OpenJobEx",
+                        script: script,
+                        action: "OpenJobEx",
+                        jobId: jobId,
                         arguments: args,
                         expirationInSeconds: Configuration.GetIntFlag("FIntGameServerExpirationInSeconds"),
                         cores: Math.Max(1, Health.GetPhysicalCoreCount() / Process.GetProcessesByName(Configuration.GetStringFlag("FStringRCCServiceName")).Length),
@@ -106,18 +107,19 @@ public class StartGameController : ControllerBase
                 if (Configuration.GetFlag("FFlagRCCServiceOnlySpeaksJSON"))
                     script = Helper.ProcessArguments(script, args);
 
-                var response = SOAP.Send(
-                    rcc.Port,
-                    "BatchJobEx",
-                    script,
-                    "BatchJobEx",
-                    out var rccvalue,
-                    jobId,
+                var response = await SOAP.Send(
+                    port: rcc.Port,
+                    jobType: "BatchJobEx",
+                    script: script,
+                    action: "BatchJobEx",
+                    jobId: jobId,
                     arguments: args,
                     expirationInSeconds: 60, // one minute for a render and thats good enough
                     cores: Math.Min(2, Health.GetPhysicalCoreCount()),
                     category: 2
                 );
+
+                var rccvalue = response.Value;
 
                 if (string.IsNullOrWhiteSpace(rccvalue))
                     return Error.Create(500, "InternalServerError");

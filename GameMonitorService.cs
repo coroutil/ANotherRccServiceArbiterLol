@@ -33,6 +33,11 @@ public static class GameMonitorService
         return _jobs.Values.FirstOrDefault(x => x.Pid == pid);
     }
 
+    public static GMSJob? GetByPort(int port)
+    {
+        return _jobs.Values.FirstOrDefault(x => x.SOAP == port);
+    }
+
     public static IReadOnlyCollection<GMSJob> GetAll()
     {
         return _jobs.Values.ToList().AsReadOnly();

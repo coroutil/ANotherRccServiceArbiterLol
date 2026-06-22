@@ -46,13 +46,12 @@ public class ExecuteScriptController : ControllerBase
         {
             var args = Helper.ParseArguments(body.arguments);
 
-            var response = SOAP.Send(
-                job.SOAP,
-                "ExecuteScript",
-                body.script,
-                "ExecuteScript",
-                out var rccvalue,
-                body.gameId,
+            var response = await SOAP.Send(
+                port: job.SOAP,
+                jobType: "ExecuteScript",
+                script: body.script,
+                action: "ExecuteScript",
+                jobId: body.gameId,
                 arguments: args
             );
 

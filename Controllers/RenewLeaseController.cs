@@ -10,11 +10,11 @@ namespace Arbiter.Controllers;
 public class RenewLeaseController : ControllerBase
 {
     [HttpPost]
-    public IActionResult Post([FromBody] RenewLeaseRequest request)
+    public async Task<IActionResult> PostAsync([FromBody] RenewLeaseRequest request)
     {
         try
         {
-            bool success = RenewLease(request.gameId, request.expirationInSeconds);
+            bool success = await RenewLease(request.gameId, request.expirationInSeconds);
 
             if (!success)
                 return Error.Create(500, "InternalServerError");
@@ -27,7 +27,7 @@ public class RenewLeaseController : ControllerBase
         }
     }
 
-    private static bool RenewLease(string gameId, int expirationInSeconds)
+    private static async Task<bool> RenewLease(string gameId, int expirationInSeconds)
     {
         using var client = new HttpClient();
 
@@ -41,13 +41,12 @@ public class RenewLeaseController : ControllerBase
             if (job == null)
                 throw new Exception($"{gameId} wasn't found in GMS");
 
-            var response = SOAP.Send(
-                job.SOAP,
-                "RenewLease",
-                string.Empty,
-                "RenewLease",
-                out var rccvalue,
-                gameId,
+            var response = await SOAP.Send(
+                port: job.SOAP,
+                jobType: "RenewLease",
+                script: string.Empty,
+                action: "RenewLease",
+                jobId: gameId,
                 expirationInSeconds: expirationInSeconds
             );
 

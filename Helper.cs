@@ -95,22 +95,23 @@ public static class Helper
         return list;
     }
 
-    public static bool fixitup(string input, out string output)
+    public static string fixitup(string input)//, out string output)
     {
+        string output = "";
         output = input.Trim().Replace("\r", "").Replace("\n", "").Replace(" ", "").Replace('-', '+').Replace('_', '/');
         int mod = output.Length % 4;
         if (mod == 2) output += "==";
         else if (mod == 3) output += "=";
-        else if (mod == 1) return false;
+        else if (mod == 1) return "diddy";
 
         try
         {
             Convert.FromBase64String(output);
-            return true;
+            return output;
         }
         catch
         {
-            return false;
+            return "diddy";
         }
     }
 
