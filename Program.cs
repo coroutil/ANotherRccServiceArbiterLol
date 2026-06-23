@@ -13,37 +13,28 @@
 
 using Arbiter;
 using Arbiter.Middleware;
-using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+Configuration.Initialize(builder.Configuration);
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-Console.Title = "ANotherRccServiceArbiterLol";
-
 var port = Configuration.GetIntFlag("FIntWebserverPort");
-var cert = Path.Combine(AppContext.BaseDirectory, "cert.crt");
-var key = Path.Combine(AppContext.BaseDirectory, "cert.key");
 
-var HTTPS = File.Exists(cert) && File.Exists(key);
+var certPath = Path.Combine(AppContext.BaseDirectory, "cert.crt");
+var keyPath = Path.Combine(AppContext.BaseDirectory, "cert.key");
+var httpsEnabled = System.IO.File.Exists(certPath) && System.IO.File.Exists(keyPath);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    if (HTTPS)
+    if (httpsEnabled)
     {
-        var fakeahcert = X509Certificate2.CreateFromPemFile(cert, key);
-
-        options.ListenAnyIP(port, listen =>
-        {
-            listen.UseHttps(fakeahcert);
-        });
-
+        var cert = X509Certificate2.CreateFromPemFile(certPath, keyPath);
+        options.ListenAnyIP(port, listen => listen.UseHttps(cert));
         Console.WriteLine("HTTPS enabled");
     }
     else
@@ -55,26 +46,19 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 
-Configuration.Initialize(app.Configuration); // build fflags
-
-// now we start rccservice
 await RCCServicePool.InitializePool();
 _ = Task.Run(RCCServicePool.StartPoolMaintenance);
 
-app.Lifetime.ApplicationStopping.Register(() =>
-{
-    RCCServicePool.Shutdown();
-});
+app.Lifetime.ApplicationStopping.Register(RCCServicePool.Shutdown);
 
-// custom headers (middleware)
 app.AddHeaders();
-// Configure the HTTP request pipeline.
 app.UseSwagger();
 app.UseSwaggerUI();
-if (HTTPS)
-{
+
+if (httpsEnabled)
     app.UseHttpsRedirection();
-}
+
 app.UseAuthorization();
 app.MapControllers();
-app.Run($"http://0.0.0.0:{Configuration.GetIntFlag("FIntWebserverPort")}");
+
+app.Run();
