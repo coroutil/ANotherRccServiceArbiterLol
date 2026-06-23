@@ -77,7 +77,7 @@ public class StartGameController : ControllerBase
                         arguments: args,
                         expirationInSeconds: Configuration.GetIntFlag("FIntGameServerExpirationInSeconds"),
                         cores: Math.Max(1, Health.GetPhysicalCoreCount() / Process.GetProcessesByName(Configuration.GetStringFlag("FStringRCCServiceName")).Length),
-                        category: 1
+                        category: Math.Max(3, 65535)
                     );
                 //});
 
@@ -153,6 +153,6 @@ public sealed class StartGameRequest
     public string Type { get; set; } = string.Empty;
     public long Id { get; set; }
 
-    // 67,string,true
-    public string Arguments { get; set; } = string.Empty;
+    // ["string", 67, true]
+    public List<object> Arguments { get; set; } = new();
 }

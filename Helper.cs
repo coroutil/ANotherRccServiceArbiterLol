@@ -4,6 +4,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using static Arbiter.GameMonitorService;
 
@@ -73,23 +74,44 @@ public static class Helper
         throw new Exception($"Unable to obtain a {protocol} port in range {minimumPort}-{maximumPort}.");
     }
 
-    public static List<LuaValue> ParseArguments(string? input)
+    public static List<LuaValue> ParseArguments(List<object>? input)
     {
         var list = new List<LuaValue>();
 
-        if (string.IsNullOrWhiteSpace(input))
+        if (input == null)
             return list;
 
-        foreach (var value in input.Split(','))
+        foreach (var value in input)
         {
-            var arg = value.Trim();
+            switch (value)
+            {
+                case bool b:
+                    list.Add(LuaValue.FromBool(b));
+                    break;
 
-            if (bool.TryParse(arg, out var b))
-                list.Add(LuaValue.FromBool(b));
-            else if (double.TryParse(arg, out var n))
-                list.Add(LuaValue.FromNumber(n));
-            else
-                list.Add(LuaValue.FromString(arg));
+                case string s:
+                    list.Add(LuaValue.FromString(s));
+                    break;
+
+                case JsonElement je when je.ValueKind == JsonValueKind.Number:
+                    list.Add(LuaValue.FromNumber(je.GetDouble()));
+                    break;
+
+                case JsonElement je when je.ValueKind == JsonValueKind.String:
+                    list.Add(LuaValue.FromString(je.GetString()!));
+                    break;
+
+                case int i:
+                case long l:
+                case double d:
+                case float f:
+                    list.Add(LuaValue.FromNumber(Convert.ToDouble(value)));
+                    break;
+
+                default:
+                    list.Add(LuaValue.FromString(value?.ToString() ?? ""));
+                    break;
+            }
         }
 
         return list;

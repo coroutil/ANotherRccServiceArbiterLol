@@ -122,48 +122,6 @@ public static class SOAP
 </soapenv:Envelope>";
     }
 
-    /*public static string Send(int port, string jobType, string script, string action, out string? rccvalue, string? jobId = null, List<LuaValue>? arguments = null, int expirationInSeconds = 120, int cores = 1, int category = 1)
-    {
-        rccvalue = null;
-
-        var xml = BuildEnvelope(jobType, script, arguments, jobId, expirationInSeconds, cores);
-        Console.WriteLine(xml);
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/");
-
-        ServicePointManager.Expect100Continue = false;
-        ServicePointManager.UseNagleAlgorithm = false;
-
-        req.Version = HttpVersion.Version11;
-        req.VersionPolicy = HttpVersionPolicy.RequestVersionExact;
-        req.Content = new StringContent(xml, Encoding.UTF8, "text/xml");
-
-        req.Headers.Add("SOAPAction", action);
-        req.Headers.ConnectionClose = true;
-
-        var resp = client.SendAsync(req).GetAwaiter().GetResult();
-        var body = resp.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-
-        if (!resp.IsSuccessStatusCode)
-            throw new Exception(body);
-
-        if (category == 2)
-        {
-            var doc = XDocument.Parse(body);
-
-            var faultstring = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "faultstring");
-            if (faultstring != null)
-                throw new Exception((string?)faultstring);
-
-            var value = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "value");
-            if (value == null)
-                throw new Exception($"No value was found in response. Unsupported RCCService version? {body}");
-
-            Helper.fixitup(value.Value.Trim(), out rccvalue);
-        }
-
-        return body;
-    }*/
-
     public static async Task<SOAPResult> Send(int port, string jobType, string script, string action, int expirationInSeconds = 120, int cores = 1, int category = 1, string? jobId = null, List<LuaValue>? arguments = null, CancellationToken cancellationToken = default)
     {
         var result = new SOAPResult();
@@ -200,7 +158,25 @@ public static class SOAP
                     .FirstOrDefault(e => e.Name.LocalName == "faultstring");
 
                 if (faultstring != null)
-                    throw new Exception((string?)faultstring);
+                {
+                    var job = GameMonitorService.GetByPort(port);
+
+                    if (job != null)
+                    {
+                        ReverseProxy.Stop(job.Port);
+
+                        try
+                        {
+                            var process = Process.GetProcessById((int)job.Pid);
+                            process.Kill(true);
+                        }
+                        catch { }
+
+                        RCCServicePool.Kill(job);
+                    }
+                    var message = string.Concat(faultstring.Nodes().OfType<XText>().Select(t => t.Value)).Trim();
+                    throw new Exception(string.IsNullOrWhiteSpace(message) ? "FATAL ERROR IN SOAP" : message);
+                }
 
                 var value = doc.Descendants()
                     .FirstOrDefault(e => e.Name.LocalName == "value");
@@ -215,6 +191,7 @@ public static class SOAP
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            // okay what the fuck some probably huge error just happend, shut down the rcc, since thats our only huge concern
             var job = GameMonitorService.GetByPort(port);
 
             if (job != null)
@@ -228,9 +205,11 @@ public static class SOAP
                     process.Kill(true);
                 }
                 catch { }
+
+                RCCServicePool.Kill(job);
             }
 
-            throw new TimeoutException("Yo maybe rcc is not good, shut it down");
+            throw new TimeoutException("RCCService timed out");
         }
     }
 }

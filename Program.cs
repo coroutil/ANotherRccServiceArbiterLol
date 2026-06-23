@@ -14,6 +14,7 @@
 using Arbiter;
 using Arbiter.Middleware;
 using System.Diagnostics;
+using System.Security.Cryptography.X509Certificates;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,9 +25,35 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var app = builder.Build();
-
 Console.Title = "ANotherRccServiceArbiterLol";
+
+var port = Configuration.GetIntFlag("FIntWebserverPort");
+var cert = Path.Combine(AppContext.BaseDirectory, "cert.crt");
+var key = Path.Combine(AppContext.BaseDirectory, "cert.key");
+
+var HTTPS = File.Exists(cert) && File.Exists(key);
+
+builder.WebHost.ConfigureKestrel(options =>
+{
+    if (HTTPS)
+    {
+        var fakeahcert = X509Certificate2.CreateFromPemFile(cert, key);
+
+        options.ListenAnyIP(port, listen =>
+        {
+            listen.UseHttps(fakeahcert);
+        });
+
+        Console.WriteLine("HTTPS enabled");
+    }
+    else
+    {
+        options.ListenAnyIP(port);
+        Console.WriteLine("HTTP only");
+    }
+});
+
+var app = builder.Build();
 
 Configuration.Initialize(app.Configuration); // build fflags
 
@@ -44,7 +71,10 @@ app.AddHeaders();
 // Configure the HTTP request pipeline.
 app.UseSwagger();
 app.UseSwaggerUI();
-//app.UseHttpsRedirection();
+if (HTTPS)
+{
+    app.UseHttpsRedirection();
+}
 app.UseAuthorization();
 app.MapControllers();
 app.Run($"http://0.0.0.0:{Configuration.GetIntFlag("FIntWebserverPort")}");

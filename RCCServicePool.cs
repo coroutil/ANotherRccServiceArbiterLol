@@ -125,10 +125,20 @@ public static class RCCServicePool
 
     public static void Kill(RCCService rcc) // A once wise band said: KILL ALL THE FAGS THAT DON'T AGREE!
     {
-        Active.TryRemove(rcc.Port, out _);
-        Idle.TryRemove(rcc.Port, out _);
-        Pending.TryRemove(rcc.Port, out _);
-        ArbiterProcessIds.TryRemove(rcc.Port, out _);
+        RemoveRCCService(rcc.Port);
+    }
+
+    public static void Kill(GameMonitorService.GMSJob job)
+    {
+        RemoveRCCService(job.Port);
+    }
+
+    private static void RemoveRCCService(int port)
+    {
+        Active.TryRemove(port, out _);
+        Idle.TryRemove(port, out _);
+        Pending.TryRemove(port, out _);
+        ArbiterProcessIds.TryRemove(port, out _);
     }
 
     private static void CleanupDeadServices()

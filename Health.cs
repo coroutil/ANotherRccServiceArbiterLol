@@ -232,12 +232,13 @@ static class Health
         return total;
     }
 
-    private static string? GetFirstMatchingProcessVersion(string containsName)
+    private static string? GetFirstMatchingProcessVersion(string processName)
     {
         try
         {
-            var proc = Process.GetProcesses().FirstOrDefault(p => p.ProcessName.Contains(containsName, StringComparison.OrdinalIgnoreCase));
+            var procs = Process.GetProcessesByName(processName);
 
+            var proc = procs.FirstOrDefault();
             if (proc is null)
                 return null;
 

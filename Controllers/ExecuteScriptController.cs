@@ -5,19 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace Arbiter.Controllers;
 
-public record ExecuteScript(
-    string gameId,
-    string scriptName,
-    string arguments,
-    string script
-);
-
 [ApiController]
 [Route("[controller]")]
 public class ExecuteScriptController : ControllerBase
 {
     [HttpPost]
-    public async Task<IActionResult> Post([FromBody] ExecuteScript body)
+    public async Task<IActionResult> Post([FromBody] ExecuteScriptRequest body)
     {
         /* validation check start */
         if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
@@ -65,4 +58,14 @@ public class ExecuteScriptController : ControllerBase
             return Error.Create(500, ex.Message);
         }
     }
+}
+
+public sealed class ExecuteScriptRequest
+{
+    public string scriptName { get; set; } = string.Empty;
+    public string gameId { get; set; } = string.Empty;
+    public string script { get; set; } = string.Empty;
+
+    // ["string", 67, true]
+    public List<object> arguments { get; set; } = new();
 }
