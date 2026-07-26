@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using System.Data;
 using System.Diagnostics;
+using System.Text;
 using static Arbiter.GameMonitorService;
 
 namespace Arbiter.Controllers;
@@ -45,32 +46,53 @@ public class StartGameController : ControllerBase
                 if (rcc == null)
                     return Error.Create(503, "ServiceUnavailable");
 
-                var raknetPort = Helper.GetAvailablePort(Configuration.GetIntFlag("DFIntGameServerMinPort"), Configuration.GetIntFlag("DFIntGameServerMaxPort"), "UDP");
+                try {
+                    await RCCServicePool.WaitForReady(rcc);
+                } catch {
+                    rcc.Kill();
+                    RCCServicePool.Kill(rcc, rcc.Process.Id);
+                    return Error.Create(503, "ServiceUnavailable");
+                }
 
-                int publicPort = raknetPort;
+                RCCServicePool.RegisterProcess(rcc);
+
+                int raknetPort;
+                int publicPort;
                 ReverseProxy? proxy = null;
 
                 if (Configuration.GetFlag("FFlagUseReverseProxy"))
                 {
-                    publicPort = Helper.GetAvailablePort(Configuration.GetIntFlag("DFIntReverseProxyMinPort"), Configuration.GetIntFlag("DFIntReverseProxyMaxPort"), "UDP");
-                    proxy = new ReverseProxy(publicPort, raknetPort);
+                    raknetPort = Helper.GetAvailablePort(Configuration.GetIntFlag("DFIntGameServerMinPort"), Configuration.GetIntFlag("DFIntGameServerMaxPort"), "UDP");
+                    int proxyPort = Helper.GetGameServerPort();
+
+                    proxy = new ReverseProxy(proxyPort, raknetPort);
                     proxy.Start();
+
+                    Console.WriteLine($"Reverse proxy enabled: public={proxyPort}, internal={raknetPort}");
+
+                    publicPort = proxyPort;
                 }
+                else
+                {
+                    raknetPort = Helper.GetGameServerPort();
+                    publicPort = raknetPort;
+
+                    Console.WriteLine($"Reverse proxy disabled: public={publicPort}");
+                }
+
+                // we need to pass on args to gameserver
+                args.Insert(0, LuaValue.FromNumber(raknetPort)); // gameserver port
+                args.Add(LuaValue.FromNumber(request.Id)); // placeid
+                args.Add(LuaValue.FromString(jobId)); // jobId
 
                 if (Configuration.GetFlag("FFlagRCCServiceOnlySpeaksJSON")) {
-                    args.Insert(0, LuaValue.FromNumber(raknetPort)); // gameserver port
-                    args.Add(LuaValue.FromNumber(request.Id)); // placeid
-                    args.Add(LuaValue.FromString(jobId)); // jobId
                     script = Helper.ProcessArguments(script, args);
                 }
-
-                RCCServicePool.RegisterProcess(rcc);
 
                 /*_ = Task.Run(() =>
                 {*/
                 await SOAP.Send(
                         port: rcc.Port,
-                        jobType: "OpenJobEx",
                         script: script,
                         action: "OpenJobEx",
                         jobId: jobId,
@@ -109,12 +131,11 @@ public class StartGameController : ControllerBase
 
                 var response = await SOAP.Send(
                     port: rcc.Port,
-                    jobType: "BatchJobEx",
                     script: script,
                     action: "BatchJobEx",
                     jobId: jobId,
                     arguments: args,
-                    expirationInSeconds: 60, // one minute for a render and thats good enough
+                    expirationInSeconds: 30, // half a minute for a render and thats good enough
                     cores: Math.Min(2, Health.GetPhysicalCoreCount()),
                     category: 2
                 );
@@ -136,15 +157,45 @@ public class StartGameController : ControllerBase
                 }
 
                 rcc.Process.Kill(true); // we kill the rcc after a render. rcc is designed to do one job at a time, as particles will break
-                RCCServicePool.Kill(rcc);
+                RCCServicePool.Kill(rcc, rcc.Process.Id);
 
-                return File(bytes, "image/png");
+                var (mime, ext) = MIME(bytes);
+
+                return File(bytes, mime);
             }
         }
         catch (Exception ex)
         {
             return Error.Create(500, ex.Message);
         }
+    }
+
+    private static (string mime, string ext) MIME(byte[] bytes)
+    {
+        if (bytes == null || bytes.Length < 4) return ("application/octet-stream", "bin");
+
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        if (bytes.Length >= 8 &&
+            bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
+            bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
+            return ("image/png", "png");
+
+        // JPEG/JPG: FF D8 FF
+        if (bytes.Length >= 3 &&
+            bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+            return ("image/jpeg", "jpg");
+
+        // OBJ: usually starting with "v ", "vn ", "vt ", "f ", etc
+        // Heuristic: treat as text and check common prefixes in first chunk
+        {
+            int sampleLen = Math.Min(bytes.Length, 512);
+            var text = Encoding.UTF8.GetString(bytes, 0, sampleLen).TrimStart();
+            if (text.StartsWith("v ") || text.StartsWith("vn ") || text.StartsWith("vt ") ||
+                text.StartsWith("f ") || text.StartsWith("o ") || text.StartsWith("g "))
+                return ("text/plain", "obj");
+        }
+
+        return ("application/octet-stream", "bin");
     }
 }
 
