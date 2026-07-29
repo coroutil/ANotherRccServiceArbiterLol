@@ -2,16 +2,18 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
-using System.Xml;
 
 namespace Arbiter;
 
 public sealed class ReverseProxy
 {
     private static readonly ConcurrentDictionary<int, ReverseProxy> Instances = new();
+
     private readonly UdpClient _listener;
     private readonly IPEndPoint _target;
     private readonly ConcurrentDictionary<IPEndPoint, UdpClient> _clients = new();
+    private readonly DeepPacketInspection _dpi = new();
+
     private bool _running;
     public int ListenPort { get; }
     public int TargetPort { get; }
@@ -33,7 +35,6 @@ public sealed class ReverseProxy
     private readonly ConcurrentDictionary<IPEndPoint, RateState> _clientRates = new();
     private readonly RateState _globalRate = new();
     private readonly object _globalRateLock = new();
-    private readonly ConcurrentDictionary<IPEndPoint, byte> _trustedClients = new();
 
     private static long NowTicks() => Stopwatch.GetTimestamp();
     private static long TicksPerSecond() => Stopwatch.Frequency;
@@ -95,34 +96,8 @@ public sealed class ReverseProxy
         }
     }
 
-    private static int FindMagicIndex(byte[] buf)
+    public void Start()
     {
-        if (buf == null || buf.Length < 5) return -1;
-
-        ReadOnlySpan<byte> magic = stackalloc byte[] { 0x00, 0xFF, 0xFF, 0x00, 0xFE };
-
-        int maxSearch = Math.Min(buf.Length - magic.Length, 256);
-        for (int i = 0; i <= maxSearch; i++)
-        {
-            bool match = true;
-            for (int j = 0; j < magic.Length; j++)
-            {
-                if (buf[i + j] != magic[j]) { match = false; break; }
-            }
-            if (match) return i;
-        }
-
-        return -1;
-    }
-
-    private static bool IsRakNetHandshake(byte[] buf, out int magicIndex)
-    {
-        magicIndex = FindMagicIndex(buf);
-        return magicIndex >= 0;
-    }
-
-
-    public void Start() {
         if (_running)
             return;
 
@@ -132,7 +107,8 @@ public sealed class ReverseProxy
         _ = Task.Run(RunAsync);
     }
 
-    public void Stop() {
+    public void Stop()
+    {
         _running = false;
 
         Instances.TryRemove(ListenPort, out _);
@@ -147,7 +123,8 @@ public sealed class ReverseProxy
         _clients.Clear();
     }
 
-    public static bool Stop(int listenPort) {
+    public static bool Stop(int listenPort)
+    {
         if (!Instances.TryGetValue(listenPort, out var proxy))
             return false;
 
@@ -155,25 +132,8 @@ public sealed class ReverseProxy
         return true;
     }
 
-    private bool ShouldAllowClient(IPEndPoint client, byte[] datagram)
+    private async Task RunAsync()
     {
-        if (_trustedClients.ContainsKey(client))
-            return true;
-
-        if (!IsRakNetHandshake(datagram, out var idx))
-        {
-            Console.WriteLine($"{client}: no magic");
-            return false;
-        }
-
-        Console.WriteLine($"{client}: magic at offset {idx}");
-
-        _trustedClients.TryAdd(client, 0);
-        return true;
-    }
-
-
-    private async Task RunAsync() {
         while (_running)
         {
             UdpReceiveResult result;
@@ -191,7 +151,9 @@ public sealed class ReverseProxy
             var client = result.RemoteEndPoint;
             var buffer = result.Buffer;
 
-            if (buffer.Length == 0) continue;
+            if (buffer.Length == 0)
+                continue;
+
             if (buffer.Length > MaxUdpPayload)
             {
                 Console.WriteLine($"DROP too big: len={buffer.Length} from={client}");
@@ -204,8 +166,11 @@ public sealed class ReverseProxy
             if (!AllowClientRate(client, buffer.Length))
                 continue;
 
-            if (!ShouldAllowClient(client, buffer))
+            if (!_dpi.AllowClientToServer(client, buffer, out var clientReason))
+            {
+                Console.WriteLine($"DROP {client}: {clientReason}");
                 continue;
+            }
 
             if (!_clients.TryGetValue(client, out var server))
             {
@@ -216,7 +181,7 @@ public sealed class ReverseProxy
 
             try
             {
-                await server.SendAsync(result.Buffer, result.Buffer.Length, _target);
+                await server.SendAsync(buffer, buffer.Length, _target);
             }
             catch
             {
@@ -224,12 +189,23 @@ public sealed class ReverseProxy
         }
     }
 
-    private async Task HandleServerTraffic(IPEndPoint client, UdpClient serverSocket) {
+    private async Task HandleServerTraffic(IPEndPoint client, UdpClient serverSocket)
+    {
         while (_running)
         {
             try
             {
                 var result = await serverSocket.ReceiveAsync();
+
+                if (result.Buffer.Length == 0)
+                    continue;
+
+                if (!_dpi.AllowServerToClient(client, result.Buffer, out var serverReason))
+                {
+                    Console.WriteLine($"DROP {client}: {serverReason}");
+                    continue;
+                }
+
                 await _listener.SendAsync(result.Buffer, result.Buffer.Length, client);
             }
             catch
@@ -240,6 +216,5 @@ public sealed class ReverseProxy
 
         serverSocket.Dispose();
         _clients.TryRemove(client, out _);
-        _trustedClients.TryRemove(client, out _);
     }
 }

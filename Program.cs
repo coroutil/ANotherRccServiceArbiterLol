@@ -46,6 +46,21 @@ builder.WebHost.ConfigureKestrel(options =>
 
 var app = builder.Build();
 
+var dowehavereverseproxy = Configuration.GetBool("FFlagUseReverseProxy");
+
+if (!dowehavereverseproxy)
+{
+    var warning = @"
+==========================================================
+REVERSE PROXY IS DISABLED
+THIS IS NOT ADVISED TO DO SO IF RAKFAIL, RAKWRITE, statsItem->setName(RakNetAddress... AREN'T FIXED IN RCCSERVICE.
+THIS IS AS SECURE AS 2007.
+==========================================================
+";
+
+    app.Logger.LogCritical(warning);
+}
+
 await RCCServicePool.InitializePool();
 _ = Task.Run(RCCServicePool.StartPoolMaintenance);
 
