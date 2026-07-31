@@ -10,7 +10,7 @@ public record KillRequest(long pid);
 public class StopGameController : ControllerBase
 {
     [HttpPost]
-    public IActionResult Post([FromBody] KillRequest request)
+    public async Task<IActionResult> Post([FromBody] KillRequest request)
     {
         /* validation check start */
         if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
@@ -36,7 +36,7 @@ public class StopGameController : ControllerBase
                 return Error.Create(404, "NotFound");
 
             GameMonitorService.Remove(job.JobId);
-            ReverseProxy.Stop(job.Port); // stop reverse proxy as well if it exists
+            await ReverseProxy.StopAsync(job.Port); // stop reverse proxy as well if it exists
 
             var process = Process.GetProcessById((int)request.pid);
 

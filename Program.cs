@@ -13,9 +13,17 @@
 
 using Arbiter;
 using Arbiter.Middleware;
+using Microsoft.Extensions.Hosting.WindowsServices;
+using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 
-var builder = WebApplication.CreateBuilder(args);
+var definitelynothardcodedargs = new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory
+};
+
+var builder = WebApplication.CreateBuilder(definitelynothardcodedargs);
 
 Configuration.Initialize(builder.Configuration);
 
@@ -35,34 +43,57 @@ builder.WebHost.ConfigureKestrel(options =>
     {
         var cert = X509Certificate2.CreateFromPemFile(certPath, keyPath);
         options.ListenAnyIP(port, listen => listen.UseHttps(cert));
-        Console.WriteLine("HTTPS enabled");
+        Logger.Info("HTTPS enabled");
     }
     else
     {
         options.ListenAnyIP(port);
-        Console.WriteLine("HTTP only");
+        Logger.Info("HTTPS disabled");
     }
 });
 
-var app = builder.Build();
-
-var dowehavereverseproxy = Configuration.GetBool("FFlagUseReverseProxy");
-
-if (!dowehavereverseproxy)
+builder.Logging.ClearProviders();
+builder.Logging.AddEventLog(options =>
 {
-    var warning = @"
-==========================================================
-REVERSE PROXY IS DISABLED
-THIS IS NOT ADVISED TO DO SO IF RAKFAIL, RAKWRITE, statsItem->setName(RakNetAddress... AREN'T FIXED IN RCCSERVICE.
-THIS IS AS SECURE AS 2007.
-==========================================================
-";
+    options.SourceName = "ANotherRccServiceArbiterLol";
+});
 
-    app.Logger.LogCritical(warning);
+if (!WindowsServiceHelpers.IsWindowsService())
+{
+    builder.Logging.AddConsole();
+} else
+{
+    builder.Host.UseWindowsService(serviceOptions =>
+    {
+        serviceOptions.ServiceName = "ANotherRccServiceArbiterLol";
+    });
 }
 
-await RCCServicePool.InitializePool();
-_ = Task.Run(RCCServicePool.StartPoolMaintenance);
+var app = builder.Build();
+
+Logger.Initialize(app.Logger);
+
+try
+{
+    Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.High;
+}
+catch (Exception ex)
+{
+    Logger.Warning($"Couldn't set priority: {ex.Message}");
+}
+
+_ = Task.Run(async () =>
+{
+    try
+    {
+        await RCCServicePool.InitializePool();
+        await RCCServicePool.StartPoolMaintenance();
+    }
+    catch (Exception ex)
+    {
+        Logger.Critical(ex.ToString());
+    }
+});
 
 app.Lifetime.ApplicationStopping.Register(RCCServicePool.Shutdown);
 

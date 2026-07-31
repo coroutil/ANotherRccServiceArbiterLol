@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 
@@ -30,9 +31,9 @@ public static class RCCServicePool
         }
     }
 
-    private static async Task WaitForReady(RCCService rcc)
+    public static async Task WaitForReady(RCCService rcc)
     {
-        var timeout = TimeSpan.FromSeconds(5);
+        var timeout = TimeSpan.FromSeconds(10);
         var start = DateTime.UtcNow;
 
         while (DateTime.UtcNow - start < timeout)
@@ -42,9 +43,14 @@ public static class RCCServicePool
 
             try
             {
-                using var client = new TcpClient();
+                await SOAP.Send(
+                    port: rcc.Port,
+                    action: "HelloWorld",
+                    script: string.Empty
+                );
 
-                await client.ConnectAsync(IPAddress.Loopback, rcc.Port);
+                if (rcc.Process.HasExited)
+                    throw new Exception($"RCCService exited with code {rcc.Process.ExitCode}");
 
                 return;
             }
@@ -52,7 +58,7 @@ public static class RCCServicePool
             {
             }
 
-            await Task.Delay(1000);
+            await Task.Delay(100);
         }
 
         throw new TimeoutException();
@@ -65,7 +71,7 @@ public static class RCCServicePool
 
         RegisterProcess(rcc);
 
-        Console.WriteLine($"Started RCCService Instance pid={rcc.Process.Id}");
+        Logger.Info($"RCCService Instance started with pid={rcc.Process.Id}");
 
         var added = !Pending.TryAdd(port, rcc);
 
@@ -95,7 +101,7 @@ public static class RCCServicePool
 
     public static async Task InitializePool()
     {
-        Console.WriteLine($"TargetPoolSize={TargetPoolSize}");
+        Logger.Debug($"TargetPoolSize={TargetPoolSize}");
 
         for (var i = 0; i < TargetPoolSize; i++)
         {
@@ -123,22 +129,29 @@ public static class RCCServicePool
             Idle.TryAdd(rcc.Port, rcc);
     }
 
-    public static void Kill(RCCService rcc) // A once wise band said: KILL ALL THE FAGS THAT DON'T AGREE!
+    public static void Kill(RCCService rcc, int pid = 0) // A once wise band said: KILL ALL THE FAGS THAT DON'T AGREE!
     {
-        RemoveRCCService(rcc.Port);
+        RemoveRCCService(rcc.Port, rcc.Process.Id);
     }
 
-    public static void Kill(GameMonitorService.GMSJob job)
+    public static void Kill(GameMonitorService.GMSJob job, int pid = 0)
     {
-        RemoveRCCService(job.Port);
+        RemoveRCCService(job.Port, job.Pid);
     }
 
-    private static void RemoveRCCService(int port)
+    private static void RemoveRCCService(int port, int pid = 0)
     {
-        Active.TryRemove(port, out _);
-        Idle.TryRemove(port, out _);
-        Pending.TryRemove(port, out _);
-        ArbiterProcessIds.TryRemove(port, out _);
+        if (Active.TryRemove(port, out var active))
+            ArbiterProcessIds.TryRemove(active.Process.Id, out _);
+
+        if (Idle.TryRemove(port, out var idle))
+            ArbiterProcessIds.TryRemove(idle.Process.Id, out _);
+
+        if (Pending.TryRemove(port, out var pending))
+            ArbiterProcessIds.TryRemove(pending.Process.Id, out _);
+
+        if (pid != 0)
+            ArbiterProcessIds.TryRemove(pid, out _);
     }
 
     private static void CleanupDeadServices()
@@ -196,8 +209,6 @@ public static class RCCServicePool
                     for (var i = 0; i < missing; i++)
                         SpawnRCCService();
                 }
-
-                Console.WriteLine($"Pending={Pending.Count}, Idle={Idle.Count}, Active={Active.Count}, Target={TargetPoolSize}");
             }
             catch
             {
@@ -206,6 +217,7 @@ public static class RCCServicePool
             await Task.Delay(1000);
         }
     }
+
     public static void Shutdown()
     {
         foreach (var pair in Pending)
@@ -245,5 +257,7 @@ public static class RCCServicePool
         Idle.Clear();
         Active.Clear();
         ArbiterProcessIds.Clear();
+
+        SandboxManager.DisposeEverything();
     }
 }

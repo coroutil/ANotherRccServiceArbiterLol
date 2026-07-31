@@ -17,7 +17,7 @@ public static class ScriptResolver
             _ => throw new Exception($"Unknown job type: {type}")
         };
 
-        Console.WriteLine($"Length: {type?.Length}");
+        Logger.Debug($"ScriptLength={type?.Length}");
 
         if (string.IsNullOrWhiteSpace(path))
             throw new Exception($"No script path configured for job type '{type}'");

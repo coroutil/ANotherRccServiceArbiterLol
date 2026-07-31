@@ -68,7 +68,7 @@ public class StartGameController : ControllerBase
                     proxy = new ReverseProxy(proxyPort, raknetPort);
                     proxy.Start();
 
-                    Console.WriteLine($"Reverse proxy enabled: public={proxyPort}, internal={raknetPort}");
+                    Logger.Debug($"Reverse proxy enabled: public={proxyPort}, internal={raknetPort}");
 
                     publicPort = proxyPort;
                 }
@@ -77,7 +77,7 @@ public class StartGameController : ControllerBase
                     raknetPort = Helper.GetGameServerPort();
                     publicPort = raknetPort;
 
-                    Console.WriteLine($"Reverse proxy disabled: public={publicPort}");
+                    Logger.Debug($"Reverse proxy disabled: public={publicPort}");
                 }
 
                 // we need to pass on args to gameserver

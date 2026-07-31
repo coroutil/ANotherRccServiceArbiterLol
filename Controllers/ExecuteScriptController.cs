@@ -41,7 +41,6 @@ public class ExecuteScriptController : ControllerBase
 
             var response = await SOAP.Send(
                 port: job.SOAP,
-                jobType: "ExecuteScript",
                 script: body.script,
                 action: "ExecuteScript",
                 jobId: body.gameId,

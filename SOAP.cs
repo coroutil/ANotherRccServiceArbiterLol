@@ -64,14 +64,14 @@ public static class SOAP
         return sw.ToString();
     }
 
-    private static string BuildEnvelope(string jobType, string script, List<LuaValue>? arguments = null, string? jobId = null, int expirationInSeconds = 120, int cores = 1, bool rendermode = false)
+    private static string BuildEnvelope(string action, string script, List<LuaValue>? arguments = null, string? jobId = null, int expirationInSeconds = 120, int cores = 1, bool rendermode = false)
     {
         var baseUrl = Configuration.GetStringFlag("FStringBaseURL");
 
-        string body = jobType switch
+        string body = action switch
         {
             "OpenJobEx" or "BatchJobEx" => $@"
-<rob:{jobType}>
+<rob:{action}>
   <rob:job>
     <rob:id>{jobId}</rob:id>
     <rob:expirationInSeconds>{expirationInSeconds}</rob:expirationInSeconds>
@@ -87,7 +87,7 @@ public static class SOAP
 {BuildArguments(arguments)}
 
   </rob:script>
-</rob:{jobType}>",
+</rob:{action}>",
 
             "ExecuteScript" => $@"
 <rob:Execute>
@@ -110,7 +110,13 @@ public static class SOAP
   <rob:expirationInSeconds>{expirationInSeconds}</rob:expirationInSeconds>
 </rob:RenewLease>",
 
-            _ => throw new ArgumentException($"Unknown job type '{jobType}'")
+            "HelloWorld" => $@"
+<rob:HelloWorld>
+  <data>
+  </data>
+</rob:HelloWorld>",
+
+            _ => throw new ArgumentException($"Unknown job type '{action}'")
         };
 
         return $@"<?xml version=""1.0"" encoding=""UTF-8""?>
@@ -122,12 +128,11 @@ public static class SOAP
 </soapenv:Envelope>";
     }
 
-    public static async Task<SOAPResult> Send(int port, string jobType, string script, string action, int expirationInSeconds = 120, int cores = 1, int category = 1, string? jobId = null, List<LuaValue>? arguments = null, CancellationToken cancellationToken = default)
+    public static async Task<SOAPResult> Send(int port, string action, string script, int expirationInSeconds = 120, int cores = 1, int category = 1, string? jobId = null, List<LuaValue>? arguments = null, CancellationToken cancellationToken = default)
     {
         var result = new SOAPResult();
 
-        var xml = BuildEnvelope(jobType, script, arguments, jobId, expirationInSeconds, cores);
-        Console.WriteLine(xml);
+        var xml = BuildEnvelope(action, script, arguments, jobId, expirationInSeconds, cores);
 
         using var req = new HttpRequestMessage(HttpMethod.Post, $"http://127.0.0.1:{port}/");
 
@@ -163,7 +168,7 @@ public static class SOAP
 
                     if (job != null)
                     {
-                        ReverseProxy.Stop(job.Port);
+                        await ReverseProxy.StopAsync(job.Port);
 
                         try
                         {
@@ -172,7 +177,7 @@ public static class SOAP
                         }
                         catch { }
 
-                        RCCServicePool.Kill(job);
+                        RCCServicePool.Kill(job, job.Pid);
                     }
                     var message = string.Concat(faultstring.Nodes().OfType<XText>().Select(t => t.Value)).Trim();
                     throw new Exception(string.IsNullOrWhiteSpace(message) ? "FATAL ERROR IN SOAP" : message);
@@ -197,7 +202,7 @@ public static class SOAP
             if (job != null)
             {
                 GameMonitorService.Remove(job.JobId);
-                ReverseProxy.Stop(job.Port);
+                await ReverseProxy.StopAsync(job.Port);
 
                 try
                 {
@@ -206,7 +211,7 @@ public static class SOAP
                 }
                 catch { }
 
-                RCCServicePool.Kill(job);
+                RCCServicePool.Kill(job, job.Pid);
             }
 
             throw new TimeoutException("RCCService timed out");

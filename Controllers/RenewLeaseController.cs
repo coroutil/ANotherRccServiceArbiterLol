@@ -23,6 +23,7 @@ public class RenewLeaseController : ControllerBase
         }
         catch (Exception ex)
         {
+            Logger.Error($"RenewLeaseController: {ex}");
             return Error.Create(500, "InternalServerError");
         }
     }
@@ -43,7 +44,6 @@ public class RenewLeaseController : ControllerBase
 
             var response = await SOAP.Send(
                 port: job.SOAP,
-                jobType: "RenewLease",
                 script: string.Empty,
                 action: "RenewLease",
                 jobId: gameId,
@@ -61,6 +61,6 @@ public class RenewLeaseController : ControllerBase
 
 public class RenewLeaseRequest
 {
-    public string gameId { get; set; }
+    public string gameId { get; set; } = null!;
     public int expirationInSeconds { get; set; }
 }
